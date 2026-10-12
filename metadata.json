@@ -1,0 +1,6 @@
+{
+  "name": "User",
+  "description": "Custom Android dedicated kiosk and unrestricted device management host client",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

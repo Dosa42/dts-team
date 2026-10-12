@@ -1,0 +1,8 @@
+Sabit surumler (degistirme, deterministik build icin):
+
+IXWebSocket   github.com/machinezone/IXWebSocket   commit 514a0b968503d758a2954ff9016289f41f489616
+mbedTLS       github.com/Mbed-TLS/mbedtls          tag v3.6.7 (068ff080b369adfac81509f9b57b2afabaf82dc5)
+cacert.pem    certifi 2026.02.25 (Mozilla CA listesi)  -> app_user/src/main/assets/cacert.pem
+
+native/third_party altinda test/doc/programs klasorleri budanmistir; kaynak kod degistirilmemistir.
+Ayrica: IXWebSocket/.github ve mbedtls/framework/.github (ic ice CI dosyalari) silindi; GitHub bunlari zaten calistirmaz.

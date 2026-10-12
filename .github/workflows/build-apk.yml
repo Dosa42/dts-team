@@ -1,0 +1,100 @@
+name: Build DTS-TEAM.v1
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # yalnizca v* etiketinde Release olusturmak icin kullanilir
+
+env:
+  # AGP 9.4.0 ile uyumlu sabit surumler (gradle/libs.versions.toml ve app_user/build.gradle.kts ile ayni olmali)
+  ANDROID_PLATFORM: "platforms;android-36"
+  ANDROID_BUILD_TOOLS: "build-tools;36.0.0"
+  ANDROID_NDK: "ndk;28.2.13676358"
+  ANDROID_CMAKE: "cmake;3.22.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Android SDK bilesenleri (lisans + platform + NDK + CMake)
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "$ANDROID_PLATFORM" "$ANDROID_BUILD_TOOLS" "$ANDROID_NDK" "$ANDROID_CMAKE" > /dev/null
+
+      - name: Release imza anahtari (istege bagli, yoksa debug anahtari kullanilir)
+        env:
+          KS_B64: ${{ secrets.DTS-TEAM.v1_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KS_B64:-}" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "DTS-TEAM.v1_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build (debug + release)
+        env:
+          DTS-TEAM.v1_KEYSTORE_PASSWORD: ${{ secrets.DTS-TEAM.v1_KEYSTORE_PASSWORD }}
+          DTS-TEAM.v1_KEY_ALIAS: ${{ secrets.DTS-TEAM.v1_KEY_ALIAS }}
+          DTS-TEAM.v1_KEY_PASSWORD: ${{ secrets.DTS-TEAM.v1_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app_user:assembleDebug :app_user:assembleRelease
+
+      - name: Ayrim kontrolu (release APK'da admin/ngrok izi olmamali)
+        run: |
+          set -euo pipefail
+          APK=$(ls app_user/build/outputs/apk/release/*.apk | head -n1)
+          echo "APK: $APK"
+          rm -rf "$RUNNER_TEMP/u" && mkdir -p "$RUNNER_TEMP/u"
+          unzip -o -q "$APK" 'lib/*' -d "$RUNNER_TEMP/u"
+          NM=$(ls "$ANDROID_HOME"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm | head -n1)
+          fail=0
+          for so in "$RUNNER_TEMP"/u/lib/*/libuser_core.so; do
+            if "$NM" -D "$so" | grep -iE "admin|permission|setSetting|createUser"; then
+              echo "::error::admin izi bulundu: $so"; fail=1
+            fi
+          done
+          if unzip -l "$APK" | grep -i ngrok; then
+            echo "::error::APK icinde ngrok izi var"; fail=1
+          fi
+          exit $fail
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: DTS-TEAM.v1
+          path: |
+            app_user/build/outputs/apk/debug/*.apk
+            app_user/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: GitHub Release (sadece v* etiketinde)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            app_user/build/outputs/apk/release/*.apk \
+            app_user/build/outputs/apk/debug/*.apk \
+            --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes

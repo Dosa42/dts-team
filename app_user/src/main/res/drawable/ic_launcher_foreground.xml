@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="1.6"
+        android:scaleY="1.6"
+        android:translateX="35"
+        android:translateY="35">
+        <!-- Tablet/Screen Frame -->
+        <path
+            android:fillColor="#818CF8"
+            android:pathData="M21,2H3C1.9,2 1,2.9 1,4v16c0,1.1 0.9,2 2,2h18c1.1,0 2,-0.9 2,-2V4C23,2.9 22.1,2 21,2zM21,18H3V6h18V18z" />
+        <!-- Internal lightning/fix-it beacon -->
+        <path
+            android:fillColor="#38BDF8"
+            android:pathData="M13,7L8,13h4l-1,4 5,-6h-4z" />
+    </group>
+</vector>
