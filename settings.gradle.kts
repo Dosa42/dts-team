@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DTS-TEAM.v1"
+rootProject.name = "User"
 include(":app_user")

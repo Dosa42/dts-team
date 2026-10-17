@@ -1,10 +1,12 @@
 package com.example.hostuser
 
-import android.content.Context
 import android.util.Log
+import com.example.hostuser.buffer.BufferBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,9 +27,10 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 /**
- * WebSocket ve baglanti yonetim cekirdegi.
- * TODO.md kurali: nativeConnect, nativeDisconnect ve init operasyonlari;
- * baglanti sifirlama ve gelen yonetim mesajlarini DeviceCommandExecutor ile calistirma.
+ * WebSocket ve bağlantı yönetim çekirdeği.
+ * Buffer Bridge entegrasyonu ile giden mesajlar soket kapalıyken yerel Room veritabanında
+ * tutulur; soket açıldığında otomatik ve sıralı olarak aktarılır.
+ * Gelen mesajlar Buffer Bridge üzerinden kaydedilir ve tekerrür önlenir.
  */
 object UserCore {
 
@@ -47,10 +50,23 @@ object UserCore {
     private var activeWebSocket: WebSocket? = null
     private var okHttpClient: OkHttpClient? = null
     private var commandExecutor: DeviceCommandExecutor? = null
+    private var bufferBridge: BufferBridge? = null
+
+    private var targetUrl: String? = null
+    private var userRequestedDisconnect: Boolean = false
+    private var reconnectJob: Job? = null
 
     fun setCommandExecutor(executor: DeviceCommandExecutor) {
         commandExecutor = executor
+        bufferBridge?.setCommandExecutor(executor)
     }
+
+    fun setBufferBridge(bridge: BufferBridge) {
+        bufferBridge = bridge
+        commandExecutor?.let { bridge.setCommandExecutor(it) }
+    }
+
+    fun getBufferBridge(): BufferBridge? = bufferBridge
 
     /**
      * CA sertifikasini yukler ve SSL istemcisini hazirlar.
@@ -72,7 +88,15 @@ object UserCore {
             return
         }
 
-        disconnectInternal()
+        userRequestedDisconnect = false
+        targetUrl = normalized
+        reconnectJob?.cancel()
+
+        connectInternal(normalized)
+    }
+
+    private fun connectInternal(normalized: String) {
+        disconnectSocketOnly()
         _status.value = ConnectionStatus.Connecting(normalized)
         Log.i(TAG, "connecting: $normalized")
 
@@ -87,14 +111,20 @@ object UserCore {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i(TAG, "open: $normalized")
                 _status.value = ConnectionStatus.Connected(normalized)
+                bufferBridge?.onWebSocketConnected(webSocket)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.i(TAG, "message ${text.length}B: ${text.take(200)}")
-                scope.launch {
-                    val response = commandExecutor?.handleIncomingMessage(text)
-                    if (!response.isNullOrBlank()) {
-                        webSocket.send(response)
+                val bridge = bufferBridge
+                if (bridge != null) {
+                    bridge.handleIncomingMessage(text)
+                } else {
+                    scope.launch {
+                        val response = commandExecutor?.handleIncomingMessage(text)
+                        if (!response.isNullOrBlank()) {
+                            webSocket.send(response)
+                        }
                     }
                 }
             }
@@ -106,34 +136,69 @@ object UserCore {
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "close: $code $reason")
+                bufferBridge?.onWebSocketDisconnected()
                 _status.value = ConnectionStatus.Disconnected
+                scheduleReconnectIfNeeded()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val errorReason = t.message ?: "Unknown socket error"
                 Log.e(TAG, "error: $errorReason (http ${response?.code})", t)
+                bufferBridge?.onWebSocketDisconnected()
                 _status.value = ConnectionStatus.Error(errorReason)
+                scheduleReconnectIfNeeded()
             }
         })
     }
 
+    private fun scheduleReconnectIfNeeded() {
+        if (userRequestedDisconnect) return
+        val url = targetUrl ?: return
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            Log.i(TAG, "Reconnection scheduled in 4 seconds for: $url")
+            delay(4000)
+            if (!userRequestedDisconnect && targetUrl == url) {
+                Log.i(TAG, "Attempting automatic reconnection to: $url")
+                connectInternal(url)
+            }
+        }
+    }
+
     /**
-     * Baglantiyi kapatir.
-     * TODO.md kurali: Sifirlamada WebSocket baglantisini kapatma yolu.
+     * Giden mesajı Buffer Bridge üzerinden güvenli ve kalıcı olarak kuyruğa alır.
+     * Soket bağlıysa hemen iletilir, kapalıysa bağlantı kurulduğunda gönderilir.
+     */
+    fun sendBufferedMessage(payload: String, explicitId: String? = null): String? {
+        val bridge = bufferBridge
+        return if (bridge != null) {
+            bridge.enqueueOutgoing(payload, explicitId)
+        } else {
+            // Bridge henüz bağlı değilse geçici doğrudan gönderim
+            activeWebSocket?.send(payload)
+            null
+        }
+    }
+
+    /**
+     * Baglantiyi tamamen kapatir ve otomatik yeniden bağlanmayı durdurur.
      */
     @JvmStatic
     fun nativeDisconnect() {
-        disconnectInternal()
+        userRequestedDisconnect = true
+        reconnectJob?.cancel()
+        disconnectSocketOnly()
+        bufferBridge?.onWebSocketDisconnected()
+        _status.value = ConnectionStatus.Disconnected
+        Log.i(TAG, "user requested disconnect")
     }
 
-    private fun disconnectInternal() {
+    private fun disconnectSocketOnly() {
         activeWebSocket?.let {
-            it.close(1000, "User reset")
+            it.close(1000, "Reset")
             it.cancel()
         }
         activeWebSocket = null
-        _status.value = ConnectionStatus.Disconnected
-        Log.i(TAG, "disconnected")
     }
 
     fun normalizeUrl(userInput: String): String {

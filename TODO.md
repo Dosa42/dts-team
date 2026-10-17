@@ -69,17 +69,13 @@ Bu plan, `DTS-TEAM.v1(2).zip` içindeki proje ile paylaşılan ekran görüntüs
 - [x] WebSocket üzerinden gelen mesajları doğrudan çalıştıran `DeviceCommandExecutor` motoru entegre edildi.
 - [x] `compile_applet` ile derleme doğrulandı.
 
-## Beklenen dosya değişiklikleri
+## 7. Native Buffer Bridge (Arabellek Köprüsü)
 
-| Dosya/alan | Planlanan değişiklik |
-| --- | --- |
-| `gradle/libs.versions.toml` | Room ve KSP sürüm/eklenti tanımları |
-| `app_user/build.gradle.kts` | KSP, Room çalışma zamanı ve derleyici; şema çıktısı |
-| `app_user/src/main/java/com/example/hostuser/LocalDb.kt` | Room veritabanı |
-| `app_user/src/main/java/com/example/hostuser/` | Kayıtlı host entity ve DAO |
-| `app_user/src/main/java/com/example/hostuser/MainActivity.kt` | Kurulum/gösterim/hata durumları, açılışta okuma, kayıt, değiştirme ve sıfırlama |
-| `app_user/src/main/java/com/example/hostuser/UserCore.kt` ve `app_user/src/main/cpp/jni_user.cpp` | Sıfırlamada WebSocket bağlantısını kapatma yolu |
-| Room şema dizini | İlk veritabanı şeması |
-| Proje notları | Akış, sürümler, veri modeli ve doğrulama sonuçları |
-
-**Tamamlanma kuralı:** Kutular yalnızca ilgili kod, derleme ve davranış doğrulaması bittikten sonra işaretlenir. Bu dosya mevcut durum ve yapılacak işler planıdır; uygulama değişikliklerinin tamamlandığını ifade etmez.
+- [x] Kalıcı giden mesaj kuyruğu (`buffered_messages` entity ve `BufferBridgeDao`) Room veritabanına entegre edildi.
+- [x] Gelen mesajlar (`received_messages`) ve tekerrür önleme (idempotency/deduplication) mekanizması kuruldu.
+- [x] Soket çevrimdışıyken mesajların kalıcı saklanması, yeniden bağlanmada otomatik ve sıralı (FIFO) iletimi tamamlandı.
+- [x] Mesaj takibi (benzersiz ID, teslimat durumu, oluşturulma zamanı, son deneme zamanı, yeniden deneme sayısı, sıra numarası) uygulandı.
+- [x] Room veritabanı sürüm 2'ye yükseltildi; `MIGRATION_1_2` ile kayıtlı sunucu adresi ve mevcut kayıtlar korunarak genişletildi.
+- [x] WebSocket.send() onayı ile uzak sunucu teyidi (ACK) ayrıştırıldı; teslimat durumu doğruluğu sağlandı.
+- [x] Tüm isterleri doğrulayan birim testleri (`BufferBridgeTest`) yazıldı ve 6/6 başarıyla geçti.
+- [x] `:app_user:assembleDebug` ve `:app_user:testDebugUnitTest` başarıyla tamamlandı.

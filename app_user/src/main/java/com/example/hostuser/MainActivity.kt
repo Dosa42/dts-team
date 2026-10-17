@@ -50,7 +50,11 @@ class MainActivity : ComponentActivity() {
 
         val caPath = copyCaToFiles()
         val executor = DeviceCommandExecutor(applicationContext)
+        val db = LocalDb.getDatabase(applicationContext)
+        val bridge = com.example.hostuser.buffer.BufferBridge.getInstance(db.bufferBridgeDao(), executor)
+
         UserCore.setCommandExecutor(executor)
+        UserCore.setBufferBridge(bridge)
         io.execute { UserCore.nativeInit(caPath) }
 
         setContent {

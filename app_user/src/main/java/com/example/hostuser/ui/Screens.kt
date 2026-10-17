@@ -269,6 +269,11 @@ fun ViewingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                val bridge = remember { UserCore.getBufferBridge() }
+                val pendingCount by bridge?.pendingCount?.collectAsState() ?: remember { mutableStateOf(0) }
+                val inTransitCount by bridge?.inTransitCount?.collectAsState() ?: remember { mutableStateOf(0) }
+                val deliveredCount by bridge?.deliveredCount?.collectAsState() ?: remember { mutableStateOf(0) }
+
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -291,12 +296,90 @@ fun ViewingScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Gelen yönetim ve kabuk komutları bu tablet üzerinde otomatik çalıştırılır.",
                             style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center
                         )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Buffer Bridge Kuyruk Durumu",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$pendingCount",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pendingCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Bekleyen (Room)",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$inTransitCount",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                                Text(
+                                    text = "Sokette (Teyit Bekliyor)",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "$deliveredCount",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Onaylanan (ACK)",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    UserCore.sendBufferedMessage("""{"action":"ping","timestamp":${System.currentTimeMillis()}}""")
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("buffer_send_ping_button")
+                            ) {
+                                Text("Ping Kuyruğa Al", style = MaterialTheme.typography.labelSmall)
+                            }
+                            Button(
+                                onClick = {
+                                    UserCore.sendBufferedMessage("""{"action":"telemetry","client":"tablet","timestamp":${System.currentTimeMillis()}}""")
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("buffer_send_telemetry_button")
+                            ) {
+                                Text("Telemetri Gönder", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }
